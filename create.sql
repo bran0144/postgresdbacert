@@ -420,3 +420,97 @@ GRANT INSERT ON account TO fin;
 -- Provide sgold with the required table privileges
 ALTER TABLE loan OWNER TO sgold;
 
+-- hierarchical control with schemas
+CREATE SCHEMA me;
+CREATE TABLE me.account (...);
+CREATE USER better_half WITH PASSWORD 'changeme';
+GRANT USAGE ON SCHEMA public TO better_half;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO better_half;
+
+CREATE GROUP family;
+GRANT USAGE ON SCHEMA public to family;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO family;
+ALTER GROUP family ADD USER fin;
+
+-- Exercises:
+-- Create a user account for Ronald Jones
+CREATE USER rjones WITH PASSWORD 'changeme';
+
+-- Create a user account for Kim Lopez
+CREATE USER klopez WITH PASSWORD 'changeme';
+
+-- Create a user account for Jessica Chen
+CREATE USER jchen WITH PASSWORD 'changeme';
+
+-- Create the dev_team group
+CREATE GROUP dev_team;
+
+-- Grant privileges to dev_team group on loan table
+GRANT INSERT, UPDATE, DELETE, SELECT ON loan TO dev_team;
+
+-- Add the new user accounts to the dev_team group
+ALTER GROUP dev_team ADD USER rjones, klopez, jchen;
+
+-- Create the development schema
+CREATE SCHEMA development;
+
+-- Grant usage privilege on new schema to dev_team
+GRANT USAGE ON SCHEMA development TO dev_team;
+
+-- Create a loan table in the development schema
+CREATE TABLE development.loan (
+	borrower_id INTEGER,
+	bank_id INTEGER,
+	approval_date DATE,
+	program text NOT NULL,
+	max_amount DECIMAL(9,2) NOT NULL,
+	gross_approval DECIMAL(9, 2) NOT NULL,
+	term_in_months SMALLINT NOT NULL,
+	revolver_status BOOLEAN NOT NULL,
+	bank_zip VARCHAR(10) NOT NULL,
+	initial_interest_rate DECIMAL(4, 2) NOT NULL
+);
+
+-- Grant privileges on development schema
+GRANT INSERT, UPDATE, DELETE, SELECT ON ALL TABLES IN SCHEMA development TO dev_team;
+
+-- rolling back privleges
+REVOKE ALL PRIVILEGES ON finances.* FROM cousin;
+GRANT SELECT ON finances.* FROM cousin;
+
+-- Exercises:
+-- Remove the specified privileges for Kim
+REVOKE INSERT, UPDATE, DELETE ON development.loan FROM klopez;
+
+-- Create the project_management group
+CREATE GROUP project_management;
+
+-- Grant project_management SELECT privilege
+GRANT SELECT ON loan TO project_management;
+
+-- Add Kim's user to project_management group
+ALTER GROUP project_management ADD USER klopez;
+
+-- Remove Kim's user from dev_team group
+REVOKE dev_team FROM klopez;
+
+-- Create the new analysis schema
+CREATE SCHEMA analysis;
+
+-- Create a table unapproved loan under the analysis schema
+CREATE TABLE analysis.unapproved_loan (
+    id serial PRIMARY KEY,
+    loan_id INTEGER REFERENCES loan(id),
+    description TEXT NOT NULL
+);
+
+-- Create 'data_scientist' user with password 'changeme'
+CREATE USER data_scientist WITH password 'changeme';
+
+-- Give 'data_scientist' ability to use 'analysis' schema
+GRANT USAGE ON SCHEMA analysis TO data_scientist;
+
+-- Grant read-only access to table for 'data_scientist' user
+GRANT SELECT ON analysis.unapproved_loan TO data_scientist;
+

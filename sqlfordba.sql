@@ -425,3 +425,233 @@ SELECT indexname -- Check for the index
 FROM pg_indexes
 WHERE tablename = 'daily_aqi';
 
+SELECT category
+  , COUNT(*) as record_cnt
+  , SUM(no_sites) as aqi_monitoring_site_cnt
+FROM daily_aqi
+WHERE category <> 'Good'
+AND state_code = 15 -- Filter to Hawaii
+GROUP BY category;
+
+EXPLAIN
+SELECT category
+  , COUNT(*) as record_cnt
+  , SUM(no_sites) as aqi_monitoring_site_cnt
+FROM daily_aqi
+WHERE defining_parameter = 'SO2'
+AND category <> 'Good'
+AND state_code = 15 -- Filter to Hawaii
+GROUP BY  category;
+
+CREATE INDEX defining_parameter_index ON daily_aqi (defining_parameter); 
+
+EXPLAIN
+SELECT category
+  , COUNT(*) as record_cnt
+  , SUM(no_sites) as aqi_monitoring_site_cnt
+FROM daily_aqi
+WHERE defining_parameter = 'SO2'
+AND category <> 'Good'
+AND state_code = 15 -- Hawaii
+GROUP BY  category;
+
+-- Column oriented storage
+  -- good for analytics(counts, averages, calculations, reporting, aggregations)
+  -- fast to perform column calculations
+  -- quick to return all rows
+-- Transactional focus
+  -- slow to return all columns
+  -- slow to load data
+  -- fast insert and delete of records
+-- Examples of column oriented
+  -- Citrus Data, Greenplum, Amazon redshit
+  -- Oracle In Memory Cloud Store, Clickhouse, apache Druid, CrateDB
+
+-- Reducing columns returned can improve performance 
+  -- Use SELECT * sparingly
+  -- Use information schema to explore data
+
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_catalog = "schema_name"
+AND table_name = "zoo_animals";
+
+-- for column oriented
+SELECT MIN(age), MAX(age)
+FROM zoo_animals
+WHERE species = 'zebra';
+
+-- for row oriented
+SELECT *
+FROM zoo_animals
+WHERE species = 'zebra'
+ORDER BY age;
+
+-- Examine metadata about daily_aqi
+SELECT column_name , data_type , is_nullable
+FROM information_schema.columns
+WHERE table_catalog = 'olympics_aqi'
+AND table_name = 'daily_aqi' -- Limit to a specific table
+;
+
+-- Query Lifecycle
+  -- Parser - sends query to DB, checks syntax, translates SQL into machine readable code
+  -- Planner/Optimizer - assess and optimize query tasks, uses db status to create query plan
+      -- calculates costs and chooses the best plan
+  -- Executor - returns query results - follows query plan and executes the query
+
+-- Query Planner adjusts with SQL structure changes
+  -- generates plan trees with nodes corresponding to steps
+  -- can visualize with EXPLAIN
+  -- estimates cost of each tree (using stats from pg_tables)
+  -- optimization is based on time
+
+SELECT * FROM pg_class
+WHERE relname = 'mytable'
+
+SELECT * FROM pg_stats
+WHERE table_name = 'mytable'
+
+-- Query plans are read bottom to top
+
+SELECT * -- Index indicator column
+FROM pg_class
+WHERE relname = 'daily_aqi';
+
+SELECT *
+FROM pg_stats
+WHERE tablename = 'daily_aqi'
+AND attname = 'category';
+
+EXPLAIN
+SELECT * 
+FROM daily_aqi;
+
+CREATE INDEX good_index 
+ON annual_aqi(good);
+
+EXPLAIN
+SELECT state_name, county_name, aqi_year, good
+FROM annual_aqi
+WHERE good > 327 -- 90% of the year
+AND aqi_year IN (2017,2018);
+
+SELECT COUNT(category)
+FROM daily_aqi
+WHERE state_code = 15 -- Hawaii state code
+AND no_sites > 1;
+
+EXPLAIN
+SELECT *
+FROM daily_aqi
+WHERE state_code = 15 -- Hawaii state code
+AND no_sites > 1;
+
+EXPLAIN
+SELECT *
+FROM daily_aqi_partitioned
+WHERE state_code = 15 -- partitioned on state code
+AND no_sites > 1;
+
+-- EXPLAIN
+  -- optional parameters
+    -- VERBOSE - shows columns for each plan node, shows table schema and aliases
+    -- ANALYZE - actually runs the query (and outputs into ms instead of unitless time estimates)
+      -- includes planning and execution run times
+
+EXPLAIN VERBOSE
+SELECT *
+FROM country_demos;
+
+EXPLAIN ANALYZE
+SELECT *
+FROM country_demos;
+
+SELECT country
+ , region
+ , MAX(population) - MIN(population) as population_change
+FROM country_pop 
+GROUP BY country, region;
+
+EXPLAIN ANALYZE
+SELECT country
+ , region
+ , MAX(population) - MIN(population) as population_change
+FROM country_pop 
+GROUP BY country, region;
+
+SELECT country
+ , region
+ , MAX(population) - MIN(population) as population_change
+FROM country_pop  
+GROUP BY country, region
+ORDER BY population_change DESC;
+
+EXPLAIN ANALYZE
+SELECT country
+ , region
+ , MAX(population) - MIN(population) as population_change
+FROM country_pop 
+GROUP BY country, region
+ORDER BY population_change DESC;
+
+SELECT old.country
+, old.region
+, old.population_1990
+, new.population_2017
+, 100*((new.population_2017 - old.population_1990)/new.population_2017::float) as population_growth
+FROM pop_1990 old
+INNER JOIN pop_2017 new 
+USING(country)
+ORDER BY population_growth DESC
+
+-- Top row and rows with arrows actually get executed
+-- As long as subqueries occur in SELECT or WHERE clauses, they query planner treats them the same as joins
+
+-- Subquery
+EXPLAIN ANALYZE
+SELECT city
+, sex
+, COUNT(DISTINCT athlete_id) as no_athletes
+, AVG(age) as avg_age
+FROM athletes_summ
+WHERE country_code IN (SELECT olympic_cc FROM demographics WHERE gdp > 10000 and year = 2016)
+AND year = 2016
+GROUP BY city, sex;
+
+-- Note the initial step in the query plan
+
+-- Common Table Expression (CTE)
+EXPLAIN ANALYZE
+WITH gdp AS -- From the demographics table
+(
+  SELECT olympic_cc FROM demographics WHERE gdp > 10000 and year = 2016
+)
+SELECT a.city, a.sex
+  , COUNT(DISTINCT a.athlete_id) as no_athletes
+  , AVG(a.age) as avg_age
+FROM athletes_summ a
+INNER JOIN gdp
+  ON a.country_code = gdp.olympic_cc
+WHERE a.year = 2016
+GROUP BY a.city, a.sex;
+
+SELECT city, sex, COUNT(DISTINCT athlete_id), AVG(age) AS avg_age
+FROM athletes_summ
+WHERE city IN ('Rio de Janeiro','Beijing')
+GROUP BY city, sex;
+
+-- Read the query plan with the text city filter
+EXPLAIN ANALYZE
+SELECT city, sex, COUNT(DISTINCT athlete_id), AVG(age) AS avg_age
+FROM athletes_summ
+WHERE city IN ('Rio de Janeiro','Beijing')
+GROUP BY city, sex;
+
+-- Find the execution time with a numeric year filter
+EXPLAIN ANALYZE
+SELECT city, sex, COUNT(DISTINCT athlete_id), AVG(age) AS avg_age
+FROM athletes_summ
+WHERE year IN (2016,2008) -- Filter by year
+GROUP BY city, sex;
+

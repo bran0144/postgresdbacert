@@ -325,3 +325,103 @@ INNER JOIN demographics_rank demos
   ON ath.year = demos.year
   AND demos.olympic_cc = 'RSA' -- Filter to South Africa
 ORDER BY ath.season, ath.year;
+
+
+-- Base table - organized storage that contains data, ETL process
+-- Temporary table - organized storage that contains data - loaded through query (transcient) 
+    -- process, data from existing base tables
+-- Views - not data storage - its a stored query that contains directions and definitions 
+-- Standard view - combine commonly joined tables, computed columns, show partial data in a table
+-- Materialized view - cross between standview and temporary tables
+    -- stored query that contains data that comes from a refresh process
+    -- faster than standard views 
+-- temp tables can speed up slow queries
+-- views are better for complicated logic or calculated fields
+-- materialized view speeds up the slower performance of standard views
+
+
+SELECT DISTINCT table_type
+FROM information_schema.tables 
+WHERE table_catalog = 'olympics_aqi'; 
+
+SELECT *
+FROM information_schema.tables 
+WHERE table_catalog = 'olympics_aqi' 
+AND table_name = 'annual_aqi';
+
+-- Database storage types
+  -- row oriented storage - retains relationship between columns
+      -- one row stored in same location
+      -- fast to append or delete whole records
+      -- quick to return all columns
+      -- slow to return all rows
+      -- reducing rows: WHERE, INNER JOIN, DISTINCT, LIMIT
+  -- column oriented storage - retains relationship between rows
+  -- postgres inherently uses row oriented storage
+-- Row oriented db methods
+  -- partitions, indexes, 
+
+EXPLAIN
+SELECT *
+FROM daily_aqi;
+
+EXPLAIN
+SELECT *
+FROM daily_aqi
+LIMIT 10;
+
+EXPLAIN
+SELECT * 
+FROM daily_aqi
+WHERE state_code = 15; -- Hawaii state code
+
+SELECT county_name
+  , aqi
+  , category
+  , aqi_date
+FROM daily_aqi_partitioned
+WHERE state_code = 15
+ORDER BY aqi;
+
+-- Using and creating Indexes
+-- Uses sorted column keys to improve search
+-- references a data location
+-- looks for a pointer
+-- faster queries
+-- PG_TABLES - similar to information_schema - specific to Postgres
+  -- metadata about db
+
+CREATE INDEX recipe_index
+ON cookbook (recipe);
+
+CREATE INDEX CONCURRENTLY recipe_index
+ON cookbook (recipe, serving_size);
+
+-- CONCURRENTLY prevents the table from being locked while index is being built
+-- Indexes are useful for:
+  -- large tables
+  -- common filter conditions
+  -- primary keys
+  -- tables that get a lot of queries
+-- Avoid indexes on:
+  -- small tables
+  -- columns with many nulls
+  -- frequently updated tables
+    -- index will become fragmented
+    -- writes data in two places
+
+SELECT tablename
+ , indexname
+FROM pg_indexes;
+
+SELECT indexname
+FROM pg_indexes
+WHERE tablename = 'daily_aqi'; -- Filter condition
+
+CREATE INDEX defining_parameter_index 
+ ON daily_aqi (defining_parameter); -- Define the index creation
+
+SELECT indexname -- Check for the index
+FROM pg_indexes
+WHERE tablename = 'daily_aqi';
+
